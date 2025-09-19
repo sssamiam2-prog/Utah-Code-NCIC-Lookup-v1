@@ -21,7 +21,7 @@ The data is embedded directly from an Excel workbook and works completely offlin
 ## 🌐 Live App
 The app is published with GitHub Pages here:
 
-👉 [https://sssamiam2-prog.github.io/Utah-Code-NCIC-Code/](https://sssamiam2-prog.github.io/Utah-Code-NCIC-Code/)
+👉 [https://sssamiam2-prog.github.io/Utah-Code-NCIC-Code/](https://sssamiam2-prog.github.io/Utah-Code-NCIC-Lookup-v1/)
 
 ---
 
