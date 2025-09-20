@@ -2,163 +2,140 @@ let allRows = [];
 let headers = [];
 let currentPage = 1;
 let pageSize = 100;
-let jurisdictionControl;
 
-async function loadData() {
-  document.getElementById("loading").style.display = "flex";
-  const res = await fetch("./smot_data.json", { cache: "no-store" });
-  const data = await res.json();
-  allRows = data;
-  headers = Object.keys(allRows[0] || {});
-  document.getElementById("loading").style.display = "none";
+const $ = (sel) => document.querySelector(sel);
+const createEl = (tag, attrs={}) => {
+  const el = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs)) {
+    if (k==="text") el.textContent = v;
+    else if (k==="html") el.innerHTML = v;
+    else el.setAttribute(k,v);
+  }
+  return el;
+};
+
+// ===== Load Data =====
+async function loadData(){
+  const loading = $("#loading");
+  loading.style.display = "flex";
+  try {
+    const res = await fetch("./smot_data.json",{cache:"no-store"});
+    if(!res.ok) throw new Error("Failed to load JSON");
+    allRows = await res.json();
+    headers = Object.keys(allRows[0]||{});
+  } catch(e){
+    console.error(e);
+    alert("Could not load data file smot_data.json");
+  } finally {
+    loading.style.display = "none";
+  }
 }
 
-function buildFilters() {
-  const filtersDiv = document.getElementById("filters");
-  filtersDiv.innerHTML = "";
-
-  // Jurisdiction dropdown (Gov Code Literal)
-  const wrap = document.createElement("div");
-  const label = document.createElement("label");
-  label.className = "label";
-  label.textContent = "Jurisdiction";
-  const sel = document.createElement("select");
-  sel.setAttribute("data-col", "Gov Code Literal");
-  wrap.appendChild(label);
-  wrap.appendChild(sel);
-  filtersDiv.appendChild(wrap);
-
-  // Populate unique jurisdiction values
-  const values = [...new Set(allRows.map(r => r["Gov Code Literal"]).filter(Boolean))].sort();
-  sel.appendChild(new Option("(All)", ""));
-  values.forEach(v => sel.appendChild(new Option(v, v)));
-
-  jurisdictionControl = new Choices(sel, {
-    searchEnabled: true,
-    removeItemButton: false,
-    shouldSort: true,
-    placeholderValue: "(All)",
-    itemSelectText: ""
+// ===== Build Filters =====
+function buildFilters(){
+  const jurisSel = $("#jurisdiction");
+  jurisSel.innerHTML = "";
+  const jurisVals = [...new Set(allRows.map(r=>r["Gov Code Literal"]))].filter(Boolean).sort();
+  jurisVals.unshift("(All)");
+  jurisVals.forEach(v=>{
+    const opt = createEl("option",{value:v,text:v});
+    jurisSel.appendChild(opt);
   });
-
-  // Default Jurisdiction
-  jurisdictionControl.setChoiceByValue("STATE OF UTAH");
+  // default "State of Utah"
+  jurisSel.value = "STATE OF UTAH";
+  new Choices(jurisSel,{searchEnabled:true,itemSelectText:""});
 }
 
-function getFilters() {
-  const filters = {};
-  const val = jurisdictionControl.getValue(true);
-  if (val) filters["Gov Code Literal"] = new Set([val]);
-  return filters;
+// ===== Filtering =====
+function getFilters(){
+  const juris = $("#jurisdiction").value;
+  const txt = $("#search").value.trim().toLowerCase();
+  return {juris,txt};
 }
 
-function rowMatches(row, filters) {
-  for (const [col, set] of Object.entries(filters)) {
-    const v = (row[col] ?? "").toString();
-    if (!set.has(v)) return false;
+function rowMatches(row,f){
+  if(f.juris && f.juris!=="(All)" && row["Gov Code Literal"]!==f.juris) return false;
+  if(f.txt){
+    const desc = (row["Short Description"]||"").toString().toLowerCase();
+    const ncic = (row["NCIC Code"]||"").toString().toLowerCase();
+    if(!desc.includes(f.txt) && !ncic.includes(f.txt)) return false;
   }
   return true;
 }
 
-function render() {
-  const tbody = document.getElementById("tbody");
-  const q = document.getElementById("q").value.toLowerCase();
-  const filters = getFilters();
+// ===== Rendering =====
+function render(){
+  const tbody=$("#body"), thead=$("#head");
+  const filters=getFilters();
+  const filtered = allRows.filter(r=>rowMatches(r,filters));
 
-  let filtered = allRows.filter(r => rowMatches(r, filters));
+  const total=filtered.length;
+  const totalPages=Math.max(1,Math.ceil(total/pageSize));
+  if(currentPage>totalPages) currentPage=totalPages;
+  const start=(currentPage-1)*pageSize;
+  const pageRows=filtered.slice(start,start+pageSize);
 
-  if (q) {
-    filtered = filtered.filter(r =>
-      (r["Short Description"] || "").toLowerCase().includes(q) ||
-      (r["NCIC Code"] || "").toLowerCase().includes(q)
-    );
+  $("#count").textContent=`${total.toLocaleString()} rows`;
+  $("#page").textContent=`Page ${currentPage}/${totalPages}`;
+  $("#prev").disabled=currentPage<=1;
+  $("#next").disabled=currentPage>=totalPages;
+
+  // header once
+  if(!thead.innerHTML){
+    headers.forEach(h=>thead.appendChild(createEl("th",{text:h})));
   }
 
-  const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  if (currentPage > totalPages) currentPage = totalPages;
-  const start = (currentPage - 1) * pageSize;
-  const pageRows = filtered.slice(start, start + pageSize);
-
-  document.getElementById("count").textContent = `${total.toLocaleString()} rows`;
-  document.getElementById("page").textContent = `Page ${currentPage} / ${totalPages}`;
-  document.getElementById("prev").disabled = currentPage <= 1;
-  document.getElementById("next").disabled = currentPage >= totalPages;
-
-  tbody.innerHTML = "";
-  const frag = document.createDocumentFragment();
-
-  pageRows.forEach(r => {
-    const tr = document.createElement("tr");
-    tr.className = "tap";
-    headers.forEach(h => {
-      const td = document.createElement("td");
-      let val = r[h] ?? "";
-
-      if (h === "Violation Code" && val) {
-        const link = document.createElement("a");
-        link.href = `https://www.google.com/search?q=Utah+${encodeURIComponent(val)}`;
-        link.target = "_blank";
-        link.className = "code-link";
-        link.textContent = val;
-        td.appendChild(link);
+  tbody.innerHTML="";
+  const frag=document.createDocumentFragment();
+  pageRows.forEach(r=>{
+    const tr=document.createElement("tr");
+    headers.forEach(h=>{
+      let val=(r[h]??"").toString();
+      if(h==="Violation Code" && val){
+        const a=createEl("a",{href:"#",class:"link",text:val});
+        a.addEventListener("click",e=>{
+          e.preventDefault();
+          openPreview(val);
+        });
+        const td=document.createElement("td");
+        td.appendChild(a);
+        tr.appendChild(td);
       } else {
-        td.textContent = val;
+        tr.appendChild(createEl("td",{text:val}));
       }
-      tr.appendChild(td);
     });
-
-    tr.addEventListener("click", () => showRecord(r));
     frag.appendChild(tr);
   });
-
   tbody.appendChild(frag);
 }
 
-function showRecord(row) {
-  const backdrop = document.getElementById("backdrop");
-  const modalTitle = document.getElementById("modal-title");
-  const modalContent = document.getElementById("modal-content");
-
-  modalTitle.textContent = row["Short Description"] || "Record";
-  modalContent.innerHTML = "";
-
-  headers.forEach(h => {
-    const kv = document.createElement("div");
-    kv.className = "kv";
-    const k = document.createElement("div"); k.className = "k"; k.textContent = h;
-    const v = document.createElement("div"); v.className = "v"; v.textContent = row[h] || "";
-    kv.appendChild(k); kv.appendChild(v);
-    modalContent.appendChild(kv);
-  });
-
-  backdrop.style.display = "flex";
+// ===== Modal Preview =====
+function openPreview(code){
+  const url=`https://le.utah.gov/xcode/Title${code.split("-")[0]}.html`; 
+  $("#preview").src=url;
+  $("#modal").style.display="flex";
+}
+function closePreview(){
+  $("#modal").style.display="none";
+  $("#preview").src="";
 }
 
-function initEvents() {
-  document.getElementById("q").addEventListener("input", () => { currentPage = 1; render(); });
-  document.getElementById("prev").addEventListener("click", () => { if (currentPage > 1) { currentPage--; render(); } });
-  document.getElementById("next").addEventListener("click", () => { currentPage++; render(); });
-  document.getElementById("size").addEventListener("change", e => { pageSize = parseInt(e.target.value, 10) || 100; currentPage = 1; render(); });
-
-  document.getElementById("close").addEventListener("click", () => { document.getElementById("backdrop").style.display = "none"; });
-  document.getElementById("iframe-close").addEventListener("click", () => { document.getElementById("iframe-backdrop").style.display = "none"; });
+// ===== Events =====
+function setupEvents(){
+  $("#jurisdiction").addEventListener("change",()=>{currentPage=1;render();});
+  $("#search").addEventListener("input",()=>{currentPage=1;render();});
+  $("#prev").addEventListener("click",()=>{if(currentPage>1){currentPage--;render();}});
+  $("#next").addEventListener("click",()=>{currentPage++;render();});
+  $("#size").addEventListener("change",e=>{pageSize=parseInt(e.target.value,10);currentPage=1;render();});
+  $("#close").addEventListener("click",closePreview);
+  $("#modal").addEventListener("click",e=>{if(e.target.id==="modal") closePreview();});
 }
 
-async function init() {
+// ===== Init =====
+(async function(){
   await loadData();
+  if(!allRows.length) return;
   buildFilters();
-  initEvents();
-
-  const headRow = document.getElementById("thead");
-  headRow.innerHTML = "";
-  headers.forEach(h => {
-    const th = document.createElement("th");
-    th.textContent = h;
-    headRow.appendChild(th);
-  });
-
+  setupEvents();
   render();
-}
-
-init();
+})();
