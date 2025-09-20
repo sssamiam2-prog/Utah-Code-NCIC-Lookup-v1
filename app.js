@@ -1,4 +1,4 @@
-// ===== Helpers =====
+// ===== Utilities =====
 const $ = (sel) => document.querySelector(sel);
 const create = (tag, attrs = {}) => {
   const el = document.createElement(tag);
@@ -11,31 +11,26 @@ const create = (tag, attrs = {}) => {
 };
 
 // Build official Utah Code URL from a violation code string.
-// Examples:
-//   76-9-1503    -> https://le.utah.gov/xcode/Title76/Chapter9/76-9-S1503.html
-//   41-6a-1102   -> https://le.utah.gov/xcode/Title41/Chapter6a/41-6a-S1102.html
-//   76-9-702.3   -> https://le.utah.gov/xcode/Title76/Chapter9/76-9-S702.3.html
-// If code has subsections like "(2)+(3A)", we strip them for the URL.
+// - Handles "41-6a-1102", "76-9-1503", "76-9-702.3"
+// - Strips subsection suffixes like "(2)+(3A)" for the URL
 function buildUtahCodeUrl(codeRaw) {
   if (!codeRaw) return null;
   const code = String(codeRaw).trim();
-
-  // Take only the first token (drop trailing text), then drop subsection hints
-  const main = code.split(/\s/)[0];
-  const base = main.split(/[()\+]/)[0];
-
+  const main = code.split(/\s/)[0];          // drop trailing text
+  const base = main.split(/[()\+]/)[0];      // drop subsection hints
   const parts = base.split("-");
   if (parts.length < 3) return null;
+
   const title = parts[0];
   const chapter = parts[1];
-  const section = parts.slice(2).join("-");
+  const section = parts.slice(2).join("-");  // join back if section had extra hyphens
 
   if (!/^\d+$/.test(title)) return null;
-  if (!/^[0-9a-zA-Z]+$/.test(chapter)) return null;   // allows "6a"
+  if (!/^[0-9a-zA-Z]+$/.test(chapter)) return null;   // allows 6a
   if (!/^[0-9a-zA-Z.]+$/.test(section)) return null;  // allows decimals
 
-  const chapPart = chapter.toLowerCase();
-  return `https://le.utah.gov/xcode/Title${title}/Chapter${chapPart}/${title}-${chapPart}-S${section}.html`;
+  const chap = chapter.toLowerCase();
+  return `https://le.utah.gov/xcode/Title${title}/Chapter${chap}/${title}-${chap}-S${section}.html`;
 }
 
 // ===== State =====
@@ -44,7 +39,7 @@ let headers = [];
 let currentPage = 1;
 let pageSize = 100;
 
-// ===== Load Data =====
+// ===== Data load =====
 async function loadData() {
   const loading = $("#loading");
   loading.style.display = "flex";
@@ -61,19 +56,16 @@ async function loadData() {
   }
 }
 
-// ===== Filters =====
+// ===== Filters (Jurisdiction + Search) =====
 function buildFilters() {
-  // Jurisdiction dropdown (Gov Code Literal)
   const sel = $("#jurisdiction");
   sel.innerHTML = "";
-
   const values = [...new Set(allRows.map(r => r["Gov Code Literal"]).filter(Boolean))].sort();
   sel.appendChild(new Option("(All)", ""));
   values.forEach(v => sel.appendChild(new Option(v, v)));
 
   const ch = new Choices(sel, { searchEnabled: true, itemSelectText: "" });
 
-  // Default to STATE OF UTAH if present
   if (values.includes("STATE OF UTAH")) {
     try { ch.setChoiceByValue("STATE OF UTAH"); } catch {}
     sel.value = "STATE OF UTAH";
@@ -83,19 +75,28 @@ function buildFilters() {
   $("#search").addEventListener("input", () => { currentPage = 1; render(); });
 }
 
-// ===== Filtering =====
-function getFilters() {
-  const juris = $("#jurisdiction").value || "";
-  const txt = $("#search").value.trim().toLowerCase();
-  return { juris, txt };
+// ===== Dense mode =====
+function applyDenseFromStorage() {
+  const on = localStorage.getItem("ncic_dense") === "1";
+  $("#denseToggle").checked = on;
+  document.body.classList.toggle("dense", on);
+}
+function setupDenseToggle() {
+  applyDenseFromStorage();
+  $("#denseToggle").addEventListener("change", (e) => {
+    const on = e.target.checked;
+    document.body.classList.toggle("dense", on);
+    localStorage.setItem("ncic_dense", on ? "1" : "0");
+  });
 }
 
-function rowMatches(row, f) {
-  if (f.juris && row["Gov Code Literal"] !== f.juris) return false;
-  if (f.txt) {
-    const desc = (row["Short Description"] || "").toString().toLowerCase();
-    const ncic = (row["NCIC Code"] || "").toString().toLowerCase();
-    if (!(desc.includes(f.txt) || ncic.includes(f.txt))) return false;
+// ===== Filtering logic =====
+function rowMatches(row, juris, txt) {
+  if (juris && row["Gov Code Literal"] !== juris) return false;
+  if (txt) {
+    const d = (row["Short Description"] || "").toString().toLowerCase();
+    const n = (row["NCIC Code"] || "").toString().toLowerCase();
+    if (!(d.includes(txt) || n.includes(txt))) return false;
   }
   return true;
 }
@@ -104,9 +105,11 @@ function rowMatches(row, f) {
 function render() {
   const thead = $("#head");
   const tbody = $("#body");
-  const { juris, txt } = getFilters();
 
-  const filtered = allRows.filter(r => rowMatches(r, { juris, txt }));
+  const juris = $("#jurisdiction").value || "";
+  const txt = $("#search").value.trim().toLowerCase();
+
+  const filtered = allRows.filter(r => rowMatches(r, juris, txt));
 
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -119,7 +122,7 @@ function render() {
   $("#prev").disabled = currentPage <= 1;
   $("#next").disabled = currentPage >= totalPages;
 
-  // header (once)
+  // header once
   if (!thead.innerHTML) {
     headers.forEach(h => thead.appendChild(create("th", { text: h })));
   }
@@ -130,6 +133,7 @@ function render() {
 
   pageRows.forEach(row => {
     const tr = document.createElement("tr");
+    tr.addEventListener("click", () => openDetails(row));
 
     headers.forEach(h => {
       const td = document.createElement("td");
@@ -137,18 +141,14 @@ function render() {
 
       if (h === "Violation Code" && val) {
         const url = buildUtahCodeUrl(val);
-        if (url) {
-          const a = create("a", { href: url, class: "link", text: val, title: "Preview Utah Code" });
-          a.addEventListener("click", (e) => {
-            e.preventDefault();
-            openPreview(url, `Utah Code: ${val}`);
-          });
-          td.appendChild(a);
-        } else {
-          // Fallback to Google search if we can't build a section URL
-          const a = create("a", { href: `https://www.google.com/search?q=${encodeURIComponent("Utah " + val)}`, class: "link", text: val, target: "_blank", rel: "noopener" });
-          td.appendChild(a);
-        }
+        const a = create("a", { href: url || "#", class: "code-link", text: val, title: "Preview Utah Code" });
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation(); // don't trigger row modal
+          if (url) openPreview(url, `Utah Code: ${val}`);
+          else window.open(`https://www.google.com/search?q=${encodeURIComponent("Utah " + val)}`, "_blank", "noopener");
+        });
+        td.appendChild(a);
       } else {
         td.textContent = val;
       }
@@ -162,70 +162,108 @@ function render() {
   tbody.appendChild(frag);
 }
 
-// ===== Pagination & size =====
-function setupPager() {
-  $("#prev").addEventListener("click", () => { if (currentPage > 1) { currentPage--; render(); } });
-  $("#next").addEventListener("click", () => { currentPage++; render(); });
-  $("#size").addEventListener("change", (e) => { pageSize = parseInt(e.target.value, 10) || 100; currentPage = 1; render(); });
+// ===== Record Details Modal (includes clickable code link) =====
+const detailsBackdrop = $("#details-backdrop");
+const detailsContent = $("#details-content");
+const detailsTitle = $("#details-title");
+$("#close-details").addEventListener("click", closeDetails);
+detailsBackdrop.addEventListener("click", (e)=>{ if (e.target === detailsBackdrop) closeDetails(); });
+document.addEventListener("keydown", (e)=>{ if (e.key === "Escape") closeDetails(); });
+
+function openDetails(row) {
+  detailsTitle.textContent = row["Short Description"] || "Record Details";
+  detailsContent.innerHTML = "";
+
+  headers.forEach(h => {
+    const kv = create("div", { class: "kv" });
+    kv.appendChild(create("div", { class: "k", text: h }));
+    const value = (row[h] ?? "").toString();
+
+    if (h === "Violation Code" && value) {
+      const url = buildUtahCodeUrl(value);
+      const v = create("div", { class: "v" });
+      const a = create("a", { href: url || "#", class: "code-link", text: value });
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (url) openPreview(url, `Utah Code: ${value}`);
+        else window.open(`https://www.google.com/search?q=${encodeURIComponent("Utah " + value)}`, "_blank", "noopener");
+      });
+      v.appendChild(a);
+      kv.appendChild(v);
+    } else {
+      kv.appendChild(create("div", { class: "v", text: value }));
+    }
+    detailsContent.appendChild(kv);
+  });
+
+  detailsBackdrop.style.display = "flex";
+  detailsBackdrop.setAttribute("aria-hidden", "false");
+}
+function closeDetails(){
+  detailsBackdrop.style.display = "none";
+  detailsBackdrop.setAttribute("aria-hidden", "true");
 }
 
-// ===== Preview Modal (iframe with fallback) =====
-const backdrop = $("#preview-backdrop");
+// ===== Preview Modal (iframe + fallback) =====
+const previewBackdrop = $("#preview-backdrop");
 const frame = $("#preview-frame");
-const titleEl = $("#preview-title");
-const urlEl = $("#preview-url");
-const openBtn = $("#open-newtab");
-const copyBtn = $("#copy-link");
-const closeBtn = $("#close-preview");
+const previewTitle = $("#preview-title");
+const previewUrlEl = $("#preview-url");
+const openNew = $("#open-newtab");
+const copyLink = $("#copy-link");
+const closePreviewBtn = $("#close-preview");
 const iframeMsg = $("#iframe-msg");
 
-function openPreview(url, title) {
-  titleEl.textContent = title || "Utah Code Preview";
-  urlEl.textContent = url;
-  urlEl.title = url;
+function openPreview(url, title){
+  previewTitle.textContent = title || "Utah Code Preview";
+  previewUrlEl.textContent = url;
+  previewUrlEl.title = url;
 
-  openBtn.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
-  copyBtn.onclick = async () => {
-    try { await navigator.clipboard.writeText(url); copyBtn.textContent = "Copied!"; setTimeout(()=>copyBtn.textContent="Copy link", 1200); }
-    catch { copyBtn.textContent = "Copy failed"; setTimeout(()=>copyBtn.textContent="Copy link", 1200); }
+  openNew.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
+  copyLink.onclick = async () => {
+    try { await navigator.clipboard.writeText(url); copyLink.textContent = "Copied!"; setTimeout(()=>copyLink.textContent="Copy link", 1200); }
+    catch { copyLink.textContent = "Copy failed"; setTimeout(()=>copyLink.textContent="Copy link", 1200); }
   };
 
-  // reset iframe UI
+  // Reset
   iframeMsg.style.display = "none";
-  const loader = backdrop.querySelector(".iframe-loading");
+  const loader = previewBackdrop.querySelector(".iframe-loading");
   loader.style.display = "flex";
   frame.src = "about:blank";
 
-  // If site blocks framing, we won't get content — show fallback after timeout
-  const timer = setTimeout(() => {
-    loader.style.display = "none";
-    iframeMsg.style.display = "flex";
-  }, 3500);
-
-  frame.addEventListener("load", () => { clearTimeout(timer); loader.style.display = "none"; }, { once: true });
+  const timer = setTimeout(()=>{ loader.style.display="none"; iframeMsg.style.display="flex"; }, 3500);
+  frame.addEventListener("load", ()=>{ clearTimeout(timer); loader.style.display="none"; }, { once:true });
   frame.src = url;
 
-  backdrop.style.display = "flex";
-  backdrop.setAttribute("aria-hidden", "false");
+  previewBackdrop.style.display = "flex";
+  previewBackdrop.setAttribute("aria-hidden","false");
 }
-
-function closePreview() {
+function closePreview(){
   frame.src = "about:blank";
-  backdrop.style.display = "none";
-  backdrop.setAttribute("aria-hidden", "true");
+  previewBackdrop.style.display = "none";
+  previewBackdrop.setAttribute("aria-hidden","true");
 }
+closePreviewBtn.addEventListener("click", closePreview);
+previewBackdrop.addEventListener("click", (e)=>{ if (e.target === previewBackdrop) closePreview(); });
+document.addEventListener("keydown", (e)=>{ if (e.key === "Escape") closePreview(); });
 
-closeBtn.addEventListener("click", closePreview);
-backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closePreview(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePreview(); });
+// ===== Pager =====
+function setupPager(){
+  $("#prev").addEventListener("click", ()=>{ if (currentPage>1){ currentPage--; render(); }});
+  $("#next").addEventListener("click", ()=>{ currentPage++; render(); });
+  $("#size").addEventListener("change", (e)=>{ pageSize = parseInt(e.target.value,10) || 100; currentPage = 1; render(); });
+}
 
 // ===== Init =====
-(async function init() {
+(async function init(){
   await loadData();
   if (!allRows.length) return;
-  // Build header immediately so table structure exists before first render
+
+  // Build header once
   const head = $("#head"); head.innerHTML = ""; headers.forEach(h => head.appendChild(create("th", { text: h })));
+
   buildFilters();
   setupPager();
+  setupDenseToggle();
   render();
 })();
