@@ -23,13 +23,13 @@
       text-align: center;
     }
     .wrap { padding: 16px; max-width: 1400px; margin: auto; }
-    .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 12px; }
+    .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 12px; position: relative; z-index: 10; overflow: visible; }
     .label { font-size: 12px; font-weight: 600; margin-bottom: 4px; display:block; }
     .tools { display:flex; justify-content:space-between; align-items:center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
     .btn { padding:6px 10px; border:1px solid #d1d5db; background:#fff; border-radius:6px; cursor:pointer; }
     .btn[disabled] { opacity:0.5; cursor:not-allowed; }
     .badge { background:#eef2ff; color:#3730a3; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
-    .table-wrap { overflow:auto; max-height:70vh; background:#fff; border:1px solid #e5e7eb; border-radius:8px; }
+    .table-wrap { overflow:auto; max-height:70vh; background:#fff; border:1px solid #e5e7eb; border-radius:8px; position: relative; z-index: 1; }
     table { width:100%; border-collapse: collapse; }
     th, td { border-bottom:1px solid #e5e7eb; padding:6px 10px; font-size:14px; }
     th { background:#f3f4f6; position:sticky; top:0; z-index:1; text-align:left; }
@@ -37,6 +37,7 @@
       position: sticky; left:0; background: #f9fafb; z-index: 2;
     }
     tr.tap:hover { background:#f9fafb; cursor:pointer; }
+
     /* Loading overlay */
     #loading {
       position: fixed; top:0; left:0; width:100%; height:100%;
@@ -52,6 +53,7 @@
       animation: spin 1s linear infinite;
     }
     @keyframes spin { 100% { transform: rotate(360deg); } }
+
     /* Modals */
     .backdrop {
       position: fixed; top:0; left:0; width:100%; height:100%;
@@ -69,6 +71,7 @@
     .kv .v { font-size:13px; }
     .iframe-modal { width:95%; height:90vh; max-width:1000px; }
     .iframe-modal iframe { width:100%; height:100%; border:none; }
+
     /* Violation Code links */
     .code-link {
       color: #2563eb;
@@ -81,6 +84,15 @@
       outline-offset: 2px;
       border-radius: 4px;
     }
+
+    /* Fix Choices dropdown stacking */
+    .choices { position: relative; z-index: 999; }
+    .choices.is-open .choices__list--dropdown,
+    .choices__list--dropdown {
+      z-index: 9999 !important;
+      overflow: visible;
+    }
+
     /* Responsive */
     @media(max-width:600px){
       .kv { grid-template-columns: 1fr; }
