@@ -1,237 +1,144 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Violation / NCIC Code Search</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#2563eb" />
-  <link rel="manifest" href="manifest.webmanifest" />
 
-  <!-- iOS PWA helpers -->
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="NCIC Search" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
-
+  <!-- Choices.js styles -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+
   <style>
-    :root {
-      --blue:#2563eb; --ink:#111827; --muted:#374151; --line:#e5e7eb;
-      --bg:#f8fafc; --card:#ffffff;
-      --font:14px; --cell-pad:10px 10px; --search-font:16px; --search-pad:12px 14px;
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
     body {
-      margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      color: var(--ink); background: var(--bg); -webkit-tap-highlight-color: transparent;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 0;
+      background: #f9fafb;
     }
-
-    /* Dense mode */
-    body.dense {
-      --font:13px; --cell-pad:8px 8px; --search-font:15px; --search-pad:10px 12px;
+    header {
+      background: #1e3a8a;
+      color: #fff;
+      padding: 12px 16px;
+      font-size: 20px;
+      font-weight: 600;
+      text-align: center;
     }
-
-    .app { max-width: 1200px; margin: 0 auto; padding: 12px; }
-    .title { font-weight: 800; font-size: 22px; margin: 8px 4px 12px; letter-spacing: .2px; }
-
-    .card {
-      background: var(--card); border:1px solid var(--line); border-radius:14px; padding:12px;
-      box-shadow: 0 1px 2px rgba(0,0,0,.04);
-    }
-
-    /* Top toolbar */
-    .toolbar { display:flex; gap:12px; align-items:center; flex-wrap: wrap; justify-content: space-between; }
-    .left-tools, .right-tools { display:flex; align-items:center; gap:10px; flex-wrap: wrap; }
-    .count { background:#eef2ff; color:#3730a3; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
-
-    .search { flex:1 1 260px; position: relative; min-width: 220px; }
-    .search input {
-      width:100%; padding:var(--search-pad); border:2px solid var(--blue); border-radius:12px;
-      font-size:var(--search-font); outline:none; box-shadow: 0 0 0 3px rgba(37,99,235,.12);
-    }
-    .search input:focus { box-shadow: 0 0 0 4px rgba(37,99,235,.18); }
-
-    /* Filters grid */
-    .filters { display:grid; grid-template-columns: 1fr; gap:10px; margin-top:10px; }
-    .label { font-size:12px; color:var(--muted); margin-bottom:6px; display:block; font-weight:600; }
-    @media (min-width:680px){ .filters{ grid-template-columns: repeat(2, minmax(220px, 1fr)); } }
-    @media (min-width:980px){ .filters{ grid-template-columns: repeat(4, minmax(220px, 1fr)); } }
-
-    .btn {
-      padding:10px 12px; border:1px solid #d1d5db; background:#fff; border-radius:10px; font-size:14px;
-      line-height: 1.2; cursor:pointer; transition: background .15s ease; touch-action: manipulation;
-    }
-    .btn:hover { background:#f9fafb; }
-    .btn.red { color:#ef4444; border-color:#f3d1d1; }
-    .btn:disabled{ opacity:.5; cursor:not-allowed; }
-
-    .pager { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .pager small { color:#6b7280; }
-    .pager select.btn { padding:8px 10px; }
-
-    /* Table area */
-    .table-wrap {
-      margin-top:10px; max-height: 70vh; overflow:auto; background: var(--card);
-      border-radius:14px; border: 1px solid var(--line);
-    }
+    .wrap { padding: 16px; max-width: 1400px; margin: auto; }
+    .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 12px; }
+    .label { font-size: 12px; font-weight: 600; margin-bottom: 4px; display:block; }
+    .tools { display:flex; justify-content:space-between; align-items:center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+    .btn { padding:6px 10px; border:1px solid #d1d5db; background:#fff; border-radius:6px; cursor:pointer; }
+    .btn[disabled] { opacity:0.5; cursor:not-allowed; }
+    .badge { background:#eef2ff; color:#3730a3; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
+    .table-wrap { overflow:auto; max-height:70vh; background:#fff; border:1px solid #e5e7eb; border-radius:8px; }
     table { width:100%; border-collapse: collapse; }
-    th, td { border-bottom:1px solid var(--line); padding:var(--cell-pad); font-size:var(--font); vertical-align:top; }
-    th { position: sticky; top: 0; background:#f9fafb; text-align:left; z-index:2; }
-    tr.tap { cursor:pointer; }
-    tr.tap:hover { background:#f3f4f6; }
-
-    /* Freeze first column (desktop / wide) */
-    @media (min-width: 880px) {
-      .freeze-first th:first-child,
-      .freeze-first td:first-child {
-        position: sticky; left: 0; background: #fff; z-index: 3;
-      }
-      .freeze-first th:first-child { z-index: 4; background: #f9fafb; }
+    th, td { border-bottom:1px solid #e5e7eb; padding:6px 10px; font-size:14px; }
+    th { background:#f3f4f6; position:sticky; top:0; z-index:1; text-align:left; }
+    td:first-child, th:first-child {
+      position: sticky; left:0; background: #f9fafb; z-index: 2;
     }
-
-    /* Mobile adjustments */
-    @media (max-width: 480px){
-      .title { font-size: 18px; }
-      .btn { padding: 10px 12px; font-size: 15px; }
-      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    }
-
+    tr.tap:hover { background:#f9fafb; cursor:pointer; }
     /* Loading overlay */
-    .loading {
-      position: fixed; inset:0; background: rgba(255,255,255,0.85);
-      display:none; align-items:center; justify-content:center; z-index:100;
+    #loading {
+      position: fixed; top:0; left:0; width:100%; height:100%;
+      background: rgba(255,255,255,0.7);
+      display: none; align-items:center; justify-content:center;
+      z-index: 2000;
     }
     .spinner {
-      width:56px; height:56px; border:4px solid #93c5fd; border-top-color:#2563eb;
-      border-radius:50%; animation: spin 0.9s linear infinite;
+      border: 6px solid #e5e7eb;
+      border-top: 6px solid #2563eb;
+      border-radius: 50%;
+      width: 48px; height: 48px;
+      animation: spin 1s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg);} }
-
-    /* Modals (details and preview) */
-    .backdrop { position: fixed; inset:0; background: rgba(0,0,0,0.5); display:none; align-items:flex-end; justify-content:center; z-index:200; }
-    .modal { background:#fff; width:100%; max-width:1000px; border-radius:18px 18px 0 0; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
-    @media (min-width:720px){ .backdrop { align-items:center; } .modal { border-radius:14px; } }
-    .modal header { display:flex; justify-content: space-between; align-items:center; padding:14px; border-bottom:1px solid var(--line); }
-    .modal header h3 { margin:0; font-size:16px; }
-    .modal .content { padding:14px; max-height: 70vh; overflow:auto; }
-
-    .kv { display:grid; grid-template-columns: 180px 1fr; gap:8px; padding:6px 0; border-bottom:1px dashed #f1f5f9; }
-    .k { color:#374151; font-weight:600; }
-    .v { color:#111827; word-break:break-word; }
-
-    /* Preview iframe styles */
-    .preview-toolbar { display:flex; justify-content: space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
-    .iframe-wrap { position: relative; height: 70vh; border:1px solid var(--line); border-radius:12px; overflow: hidden; }
-    .iframe-wrap iframe { width:100%; height:100%; border:0; background:#fff; }
-    .iframe-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.9); }
-    .iframe-msg { position:absolute; inset:0; display:none; align-items:center; justify-content:center; padding:20px; text-align:center; color:#374151; }
-    .iframe-msg .btn { margin-top:10px; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    /* Modals */
+    .backdrop {
+      position: fixed; top:0; left:0; width:100%; height:100%;
+      background: rgba(0,0,0,0.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 3000;
+    }
+    .modal {
+      background:#fff; border-radius:8px; padding:16px;
+      max-width:800px; max-height:90vh; overflow:auto; width:90%;
+    }
+    .modal header { font-size:18px; font-weight:600; margin-bottom:10px; }
+    .kv { display:grid; grid-template-columns: 160px 1fr; padding:4px 0; border-bottom:1px solid #f3f4f6; }
+    .kv .k { font-weight:600; color:#374151; font-size:13px; }
+    .kv .v { font-size:13px; }
+    .iframe-modal { width:95%; height:90vh; max-width:1000px; }
+    .iframe-modal iframe { width:100%; height:100%; border:none; }
+    /* Violation Code links */
+    .code-link {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .code-link:hover { text-decoration: underline; }
+    .code-link:focus {
+      outline: 2px solid rgba(37,99,235,.4);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    /* Responsive */
+    @media(max-width:600px){
+      .kv { grid-template-columns: 1fr; }
+      th, td { font-size:12px; }
+    }
   </style>
 </head>
 <body>
-  <div class="app">
-    <div class="title">Violation / NCIC Code Search</div>
-
-    <div class="card">
-      <div class="toolbar">
-        <div class="left-tools">
-          <span class="count" id="count">0 rows</span>
-          <label class="switch" title="Toggle compact layout">
-            <span>Dense</span>
-            <input type="checkbox" id="denseToggle" />
-          </label>
-        </div>
-
-        <div class="search">
-          <input id="q" type="text" placeholder="Search…" autocomplete="off" />
-        </div>
-
-        <div class="right-tools pager">
-          <button id="prev" class="btn" type="button">Prev</button>
-          <span id="page">Page 1 / 1</span>
-          <button id="next" class="btn" type="button">Next</button>
-          <label style="margin-left:8px;">
-            <small>Page size</small>
-            <select id="size" class="btn">
-              <option>50</option>
-              <option selected>100</option>
-              <option>200</option>
-              <option>500</option>
-            </select>
-          </label>
-          <button id="clear" class="btn red" type="button">Clear all filters</button>
-        </div>
+  <header>Violation / NCIC Code Search</header>
+  <div class="wrap">
+    <div class="filters" id="filters"></div>
+    <div class="tools">
+      <div style="flex:1; min-width:220px;">
+        <input id="q" type="text" placeholder="Search Short Description or NCIC Code..." style="width:100%; padding:8px; border:2px solid #2563eb; border-radius:6px;" />
       </div>
-
-      <div class="filters" id="filters"></div>
+      <button id="clear" class="btn">Clear all filters</button>
+      <span id="count" class="badge">0 rows</span>
+      <div>
+        <button id="prev" class="btn">Prev</button>
+        <span id="page">Page 1/1</span>
+        <button id="next" class="btn">Next</button>
+        <select id="size" class="btn">
+          <option>50</option><option selected>100</option><option>200</option><option>500</option>
+        </select>
+      </div>
     </div>
-
     <div class="table-wrap">
-      <table class="freeze-first">
+      <table>
         <thead><tr id="thead"></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
   </div>
 
-  <!-- Record Details Modal -->
+  <!-- Loading -->
+  <div id="loading" aria-hidden="true"><div class="spinner"></div></div>
+
+  <!-- Record Modal -->
   <div id="backdrop" class="backdrop" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <header>
-        <h3 id="modal-title">Record Details</h3>
-        <button id="close" class="btn" aria-label="Close details">Close</button>
-      </header>
-      <div class="content" id="modal-content"></div>
+    <div class="modal">
+      <button id="close" class="btn" style="float:right;">Close</button>
+      <header id="modal-title"></header>
+      <div id="modal-content"></div>
     </div>
   </div>
 
-  <!-- Utah Code Preview Modal -->
-  <div id="preview-backdrop" class="backdrop" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
-      <header>
-        <h3 id="preview-title">Utah Code Preview</h3>
-        <button id="preview-close" class="btn" aria-label="Close preview">Close</button>
-      </header>
-      <div class="content">
-        <div class="preview-toolbar">
-          <div id="preview-link" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%"></div>
-          <div style="display:flex;gap:8px;">
-            <button id="open-newtab" class="btn" type="button">Open in new tab</button>
-            <button id="copy-link" class="btn" type="button">Copy link</button>
-          </div>
-        </div>
-        <div class="iframe-wrap">
-          <div class="iframe-loading"><div class="spinner" aria-label="Loading"></div></div>
-          <div class="iframe-msg" id="iframe-msg">
-            <div>
-              <div style="font-weight:600; margin-bottom:6px;">Preview unavailable</div>
-              <div>This site may block embedding for security. Use the button above to open it in a new tab.</div>
-              <button class="btn" id="iframe-open" style="margin-top:10px;">Open in new tab</button>
-            </div>
-          </div>
-          <iframe id="preview-frame" referrerpolicy="no-referrer"></iframe>
-        </div>
-      </div>
+  <!-- Iframe Preview Modal -->
+  <div id="iframe-backdrop" class="backdrop" aria-hidden="true">
+    <div class="modal iframe-modal">
+      <button id="iframe-close" class="btn" style="float:right;">Close</button>
+      <header id="iframe-title"></header>
+      <iframe id="iframe"></iframe>
     </div>
   </div>
 
-  <!-- Loading overlay -->
-  <div id="loading" class="loading" aria-hidden="true">
-    <div>
-      <div class="spinner" aria-label="Loading"></div>
-      <div style="text-align:center;margin-top:10px;color:#2563eb;font-weight:600;">Loading…</div>
-    </div>
-  </div>
-
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-  <script type="module" src="app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js');
-      });
-    }
-  </script>
+  <script src="./app.js"></script>
 </body>
 </html>
