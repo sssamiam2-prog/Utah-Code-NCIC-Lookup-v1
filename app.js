@@ -27,7 +27,7 @@ function uniqSort(values){
     .sort((a,b)=> String(a).localeCompare(String(b), undefined, {sensitivity:"base"}));
 }
 
-// Build official Utah Code URL from a violation code string. Fallback to Google search.
+// Build official Utah Code URL from a violation code string.
 function buildUtahCodeUrl(codeRaw){
   if (!codeRaw) return null;
   const code = String(codeRaw).trim();
@@ -38,11 +38,9 @@ function buildUtahCodeUrl(codeRaw){
   const title = parts[0];
   const chapter = parts[1];
   const section = parts.slice(2).join("-");
-  if (!/^\d+$/.test(title) || !/^[0-9a-zA-Z.]+$/.test(section) || !/^[0-9a-zA-Z]+$/.test(chapter)) {
-    return `https://www.google.com/search?q=${encodeURIComponent(`Utah ${code}`)}`;
-  }
-  const chapterUrlPart = chapter.toLowerCase();
-  return `https://le.utah.gov/xcode/Title${title}/Chapter${chapterUrlPart}/${title}-${chapterUrlPart}-S${section}.html`;
+  if (!/^\d+$/.test(title) || !/^[0-9a-zA-Z.]+$/.test(section)) return `https://www.google.com/search?q=${encodeURIComponent(`Utah ${code}`)}`;
+  if (!/^[0-9a-zA-Z]+$/.test(chapter)) return `https://www.google.com/search?q=${encodeURIComponent(`Utah ${code}`)}`;
+  return `https://le.utah.gov/xcode/Title${title}/Chapter${chapter.toLowerCase()}/${title}-${chapter.toLowerCase()}-S${section}.html`;
 }
 
 // ====== STATE ======
@@ -71,23 +69,17 @@ async function loadData() {
 function buildFilters(){
   const filters = $("#filters");
   filters.innerHTML = "";
-
   headers.forEach(col=>{
     if (HIDE_FILTERS.has(col)) return;
-
     const wrap = create("div");
     wrap.appendChild(create("label", { class:"label", text: friendly(col) }));
-
     const sel = create("select", { "data-col": col });
     sel.appendChild(create("option", { value:"", text:"(All)"}));
-
     uniqSort(allRows.map(r=>r[col])).forEach(v =>{
       sel.appendChild(create("option", { value:String(v), text:String(v) }));
     });
-
     wrap.appendChild(sel);
     filters.appendChild(wrap);
-
     const isJur = col === "Gov Code Literal";
     const ch = new Choices(sel, {
       searchEnabled: true,
@@ -100,7 +92,6 @@ function buildFilters(){
     if (!isJur) sel.setAttribute("multiple","multiple");
     choices[col] = ch;
   });
-
   if (choices["Gov Code Literal"]) {
     const j = choices["Gov Code Literal"];
     const exists = allRows.some(r => (r["Gov Code Literal"]||"") === DEFAULT_JURISDICTION);
@@ -109,7 +100,6 @@ function buildFilters(){
       j.passedElement.element.value = DEFAULT_JURISDICTION;
     }
   }
-
   Object.values(choices).forEach(ch => ch.passedElement.element
     .addEventListener("change", ()=>{ page=1; render(); }));
 }
@@ -124,9 +114,8 @@ function getActiveFilters(){
   }
   return f;
 }
-
 function rowMatches(row, f){
-  for (const [col, set] of Object.entries(f)) {
+  for (const [col, set] of Object.entries(f)){
     const v = (row[col] ?? "").toString();
     if (!set.has(v)) return false;
   }
@@ -138,53 +127,40 @@ function rowMatches(row, f){
   }
   return true;
 }
-
 function render(){
   const f = getActiveFilters();
   const rows = (Object.keys(f).length || searchQuery) ? allRows.filter(r=>rowMatches(r,f)) : allRows;
-
   const total = rows.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (page > pages) page = pages;
-
   const start = (page-1)*pageSize;
   const slice = rows.slice(start, start+pageSize);
-
-  const countEl = $("#count"); if (countEl) countEl.textContent = `${total.toLocaleString()} rows`;
-  const pageEl = $("#page"); if (pageEl) pageEl.textContent = `Page ${page} / ${pages}`;
-  const prevEl = $("#prev"); if (prevEl) prevEl.disabled = page <= 1;
-  const nextEl = $("#next"); if (nextEl) nextEl.disabled = page >= pages;
-
+  $("#count").textContent = `${total.toLocaleString()} rows`;
+  $("#page").textContent = `Page ${page} / ${pages}`;
+  $("#prev").disabled = page <= 1;
+  $("#next").disabled = page >= pages;
   const thead = $("#thead"); thead.innerHTML = "";
   headers.forEach((h, idx) => {
     const th = create("th", { text:h });
     if (idx === 0) th.style.left = "0";
     thead.appendChild(th);
   });
-
   const tbody = $("#tbody"); tbody.innerHTML = "";
   const frag = document.createDocumentFragment();
   slice.forEach(row=>{
     const tr = create("tr", { class:"tap", role:"button", tabindex:"0" });
     tr.addEventListener("click", ()=> openModalFromFiltered(row));
     tr.addEventListener("keydown", (e)=>{ if (e.key==="Enter"||e.key===" ") { e.preventDefault(); openModalFromFiltered(row); }});
-
     headers.forEach((h, idx)=>{
       if (h === "Violation Code") {
         const code = (row[h] ?? "").toString();
         const url = buildUtahCodeUrl(code);
         const td = create("td");
         if (url) {
-          const a = create("a", { href:url, text: code, title:"Preview Utah Code" });
-          a.addEventListener("click", (e)=>{
-            e.preventDefault();
-            e.stopPropagation(); // don't open record modal
-            openPreview(url, `Utah Code: ${code}`);
-          });
+          const a = create("a", { href:url, text: code, title:"Preview Utah Code", class:"code-link" });
+          a.addEventListener("click", (e)=>{ e.preventDefault(); openIframePreview(url, code); });
           td.appendChild(a);
-        } else {
-          td.textContent = code;
-        }
+        } else td.textContent = code;
         if (idx === 0) td.style.left = "0";
         tr.appendChild(td);
       } else {
@@ -193,38 +169,25 @@ function render(){
         tr.appendChild(td);
       }
     });
-
     frag.appendChild(tr);
   });
   tbody.appendChild(frag);
 }
 
-// ====== DETAILS MODAL ======
+// ====== MODALS ======
 const backdrop = $("#backdrop");
 const modalContent = $("#modal-content");
 const modalTitle = $("#modal-title");
-if ($("#close")) $("#close").addEventListener("click", closeModal);
-if (backdrop) backdrop.addEventListener("click", (e)=>{ if (e.target === backdrop) closeModal(); });
+$("#close").addEventListener("click", closeModal);
+backdrop.addEventListener("click", (e)=>{ if (e.target === backdrop) closeModal(); });
 document.addEventListener("keydown", (e)=>{ if (e.key==="Escape") closeModal(); });
 
 function getCurrentFiltered(){ const f = getActiveFilters(); return (Object.keys(f).length || searchQuery) ? allRows.filter(r=>rowMatches(r,f)) : allRows; }
-
 function openModalFromFiltered(row){
   const list = getCurrentFiltered();
   const idx = list.indexOf(row);
-
   modalTitle.textContent = `Record: ${(row["Violation Code"]||"")} – ${(row["Short Description"]||"")}`;
   modalContent.innerHTML = "";
-
-  const nav = create("div", { style:"display:flex;justify-content:space-between;gap:8px;margin-bottom:10px;" });
-  const navL = create("div");
-  const btnPrev = create("button", { class:"btn", text:"Prev" }); btnPrev.disabled = idx<=0;
-  const btnNext = create("button", { class:"btn", text:"Next" }); btnNext.disabled = idx>=list.length-1;
-  navL.appendChild(btnPrev); navL.appendChild(btnNext);
-  const navR = create("div", { style:"font-size:12px;color:#6b7280;", text:`Item ${idx+1} of ${list.length}` });
-  nav.appendChild(navL); nav.appendChild(navR);
-  modalContent.appendChild(nav);
-
   headers.forEach(h=>{
     const kv = create("div", { class:"kv" });
     kv.appendChild(create("div", { class:"k", text: friendly(h) }));
@@ -233,106 +196,39 @@ function openModalFromFiltered(row){
       const url = buildUtahCodeUrl(val);
       const vDiv = create("div", { class:"v" });
       if (url) {
-        const a = create("a", { href:url, text: val, title:"Preview Utah Code" });
-        a.addEventListener("click", (e)=>{
-          e.preventDefault();
-          openPreview(url, `Utah Code: ${val}`);
-        });
+        const a = create("a", { href:url, text: val, class:"code-link" });
+        a.addEventListener("click", (e)=>{ e.preventDefault(); openIframePreview(url, val); });
         vDiv.appendChild(a);
-      } else {
-        vDiv.textContent = val;
-      }
+      } else vDiv.textContent = val;
       kv.appendChild(vDiv);
     } else {
       kv.appendChild(create("div", { class:"v", text: val }));
     }
     modalContent.appendChild(kv);
   });
-
-  btnPrev.addEventListener("click", ()=>{ if (idx>0) openModalFromFiltered(list[idx-1]); });
-  btnNext.addEventListener("click", ()=>{ if (idx<list.length-1) openModalFromFiltered(list[idx+1]); });
-
-  backdrop.style.display = "flex";
-  backdrop.setAttribute("aria-hidden","false");
+  backdrop.style.display = "flex"; backdrop.setAttribute("aria-hidden","false");
 }
-function closeModal(){ if (!backdrop) return; backdrop.style.display = "none"; backdrop.setAttribute("aria-hidden","true"); }
+function closeModal(){ backdrop.style.display = "none"; backdrop.setAttribute("aria-hidden","true"); }
 
-// ====== PREVIEW MODAL (iframe with fallback) ======
-const previewBackdrop = $("#preview-backdrop");
-const previewTitle = $("#preview-title");
-const previewFrame = $("#preview-frame");
-const previewLink = $("#preview-link");
-const previewClose = $("#preview-close");
-const openNewTabBtn = $("#open-newtab");
-const copyLinkBtn = $("#copy-link");
-const iframeMsg = $("#iframe-msg");
-const iframeOpen = $("#iframe-open");
-
-function openPreview(url, title){
-  previewTitle.textContent = title || "Utah Code Preview";
-  previewLink.textContent = url;
-  previewLink.title = url;
-  openNewTabBtn.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
-  iframeOpen.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
-  copyLinkBtn.onclick = async () => {
-    try { await navigator.clipboard.writeText(url); copyLinkBtn.textContent = "Copied!"; setTimeout(()=>copyLinkBtn.textContent="Copy link", 1200); }
-    catch { copyLinkBtn.textContent = "Copy failed"; setTimeout(()=>copyLinkBtn.textContent="Copy link", 1200); }
-  };
-
-  // Reset UI
-  iframeMsg.style.display = "none";
-  const loader = previewBackdrop.querySelector(".iframe-loading");
-  loader.style.display = "flex";
-  previewFrame.src = "about:blank";
-
-  // Try to load the URL
-  previewFrame.onload = () => {
-    // onload fires for both success and about:blank; use a small delay then hide spinner
-    setTimeout(()=>{ loader.style.display = "none"; }, 150);
-  };
-
-  // If the site blocks framing, we won't get content — show fallback after timeout
-  const timer = setTimeout(()=>{
-    loader.style.display = "none";
-    iframeMsg.style.display = "flex";
-  }, 3500);
-
-  // Kick it off
-  previewFrame.src = url;
-
-  // show modal
-  previewBackdrop.style.display = "flex";
-  previewBackdrop.setAttribute("aria-hidden","false");
-
-  // clean up timer when loaded (best-effort)
-  previewFrame.addEventListener("load", ()=> clearTimeout(timer), { once:true });
-}
-
-function closePreview(){
-  previewFrame.src = "about:blank";
-  previewBackdrop.style.display = "none";
-  previewBackdrop.setAttribute("aria-hidden","true");
-}
-if (previewClose) previewClose.addEventListener("click", closePreview);
-if (previewBackdrop) previewBackdrop.addEventListener("click", (e)=>{ if (e.target === previewBackdrop) closePreview(); });
-document.addEventListener("keydown", (e)=>{ if (e.key==="Escape") closePreview(); });
-
-// ====== DENSE MODE ======
-function applyDenseFromStorage() {
-  const on = localStorage.getItem("ncic_dense") === "1";
-  const toggle = $("#denseToggle");
-  if (toggle) toggle.checked = on;
-  document.body.classList.toggle("dense", on);
+// ====== IFRAME PREVIEW ======
+const iframeBackdrop = $("#iframe-backdrop");
+const iframeEl = $("#iframe");
+$("#iframe-close").addEventListener("click", ()=>{ iframeBackdrop.style.display="none"; iframeEl.src=""; });
+iframeBackdrop.addEventListener("click", (e)=>{ if (e.target===iframeBackdrop){ iframeBackdrop.style.display="none"; iframeEl.src=""; }});
+function openIframePreview(url, code){
+  iframeEl.src = url;
+  $("#iframe-title").textContent = `Preview Utah Code – ${code}`;
+  iframeBackdrop.style.display = "flex";
 }
 
 // ====== INIT ======
 async function init(){
-  const prevBtn = $("#prev"); if (prevBtn) prevBtn.addEventListener("click", ()=>{ if (page>1){ page--; render(); }});
-  const nextBtn = $("#next"); if (nextBtn) nextBtn.addEventListener("click", ()=>{ page++; render(); });
-  const sizeSel = $("#size"); if (sizeSel) sizeSel.addEventListener("change", (e)=>{ pageSize = parseInt(e.target.value, 10) || 100; page=1; render(); });
+  $("#prev").addEventListener("click", ()=>{ if (page>1){ page--; render(); }});
+  $("#next").addEventListener("click", ()=>{ page++; render(); });
+  $("#size").addEventListener("change", (e)=>{ pageSize = parseInt(e.target.value, 10) || 100; page=1; render(); });
   const debounce = (fn,ms=140)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
-  const qInput = $("#q"); if (qInput) qInput.addEventListener("input", debounce(()=>{ searchQuery = $("#q").value.trim(); page=1; render(); }, 140));
-  const clearBtn = $("#clear"); if (clearBtn) clearBtn.addEventListener("click", ()=>{
+  $("#q").addEventListener("input", debounce(()=>{ searchQuery = $("#q").value.trim(); page=1; render(); }, 140));
+  $("#clear").addEventListener("click", ()=>{
     Object.values(choices).forEach(ch=>ch.clearStore());
     if (choices["Gov Code Literal"]) {
       const j = choices["Gov Code Literal"];
@@ -341,29 +237,6 @@ async function init(){
     }
     $("#q").value = ""; searchQuery = ""; page=1; render();
   });
-
-  // Dense toggle
-  applyDenseFromStorage();
-  const denseToggle = $("#denseToggle");
-  if (denseToggle) denseToggle.addEventListener("change", (e)=>{
-    const on = e.target.checked;
-    document.body.classList.toggle("dense", on);
-    localStorage.setItem("ncic_dense", on ? "1" : "0");
-  });
-
-  await loadData();
-  buildFilters();
-
-  if (choices["Gov Code Literal"]) {
-    const j = choices["Gov Code Literal"];
-    const exists = allRows.some(r => (r["Gov Code Literal"]||"") === DEFAULT_JURISDICTION);
-    if (exists) {
-      try { j.setChoiceByValue(DEFAULT_JURISDICTION); } catch(e){}
-      j.passedElement.element.value = DEFAULT_JURISDICTION;
-    }
-  }
-
-  page = 1;
-  render();
+  await loadData(); buildFilters(); page=1; render();
 }
 init();
