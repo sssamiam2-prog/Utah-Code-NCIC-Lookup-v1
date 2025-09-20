@@ -85,12 +85,12 @@
     @media (min-width: 880px) {
       .freeze-first th:first-child,
       .freeze-first td:first-child {
-        position: sticky; left: 0; background: #fff; z-index: 3; /* above body cells */
+        position: sticky; left: 0; background: #fff; z-index: 3;
       }
       .freeze-first th:first-child { z-index: 4; background: #f9fafb; }
     }
 
-    /* Mobile: easier scroll + larger tap targets */
+    /* Mobile adjustments */
     @media (max-width: 480px){
       .title { font-size: 18px; }
       .btn { padding: 10px 12px; font-size: 15px; }
@@ -108,31 +108,25 @@
     }
     @keyframes spin { to { transform: rotate(360deg);} }
 
-    /* Modal */
+    /* Modals (details and preview) */
     .backdrop { position: fixed; inset:0; background: rgba(0,0,0,0.5); display:none; align-items:flex-end; justify-content:center; z-index:200; }
-    .modal { background:#fff; width:100%; max-width:900px; border-radius:18px 18px 0 0; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+    .modal { background:#fff; width:100%; max-width:1000px; border-radius:18px 18px 0 0; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
     @media (min-width:720px){ .backdrop { align-items:center; } .modal { border-radius:14px; } }
     .modal header { display:flex; justify-content: space-between; align-items:center; padding:14px; border-bottom:1px solid var(--line); }
     .modal header h3 { margin:0; font-size:16px; }
     .modal .content { padding:14px; max-height: 70vh; overflow:auto; }
+
     .kv { display:grid; grid-template-columns: 180px 1fr; gap:8px; padding:6px 0; border-bottom:1px dashed #f1f5f9; }
     .k { color:#374151; font-weight:600; }
     .v { color:#111827; word-break:break-word; }
 
-    /* Super-compact phones */
-    @media (max-width: 380px) {
-      .kv { grid-template-columns: 140px 1fr; }
-    }
-
-    /* Tiny switch styling */
-    .switch {
-      display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #374151;
-      user-select:none; cursor:pointer;
-    }
-    .switch input { appearance:none; width: 36px; height: 20px; background:#e5e7eb; border-radius:999px; position: relative; outline: none; transition: background .2s; }
-    .switch input::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; background:#fff; border-radius:50%; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .2s; }
-    .switch input:checked { background:#2563eb; }
-    .switch input:checked::after { transform: translateX(16px); }
+    /* Preview iframe styles */
+    .preview-toolbar { display:flex; justify-content: space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+    .iframe-wrap { position: relative; height: 70vh; border:1px solid var(--line); border-radius:12px; overflow: hidden; }
+    .iframe-wrap iframe { width:100%; height:100%; border:0; background:#fff; }
+    .iframe-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.9); }
+    .iframe-msg { position:absolute; inset:0; display:none; align-items:center; justify-content:center; padding:20px; text-align:center; color:#374151; }
+    .iframe-msg .btn { margin-top:10px; }
   </style>
 </head>
 <body>
@@ -181,7 +175,7 @@
     </div>
   </div>
 
-  <!-- Modal -->
+  <!-- Record Details Modal -->
   <div id="backdrop" class="backdrop" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <header>
@@ -189,6 +183,36 @@
         <button id="close" class="btn" aria-label="Close details">Close</button>
       </header>
       <div class="content" id="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- Utah Code Preview Modal -->
+  <div id="preview-backdrop" class="backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+      <header>
+        <h3 id="preview-title">Utah Code Preview</h3>
+        <button id="preview-close" class="btn" aria-label="Close preview">Close</button>
+      </header>
+      <div class="content">
+        <div class="preview-toolbar">
+          <div id="preview-link" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%"></div>
+          <div style="display:flex;gap:8px;">
+            <button id="open-newtab" class="btn" type="button">Open in new tab</button>
+            <button id="copy-link" class="btn" type="button">Copy link</button>
+          </div>
+        </div>
+        <div class="iframe-wrap">
+          <div class="iframe-loading"><div class="spinner" aria-label="Loading"></div></div>
+          <div class="iframe-msg" id="iframe-msg">
+            <div>
+              <div style="font-weight:600; margin-bottom:6px;">Preview unavailable</div>
+              <div>This site may block embedding for security. Use the button above to open it in a new tab.</div>
+              <button class="btn" id="iframe-open" style="margin-top:10px;">Open in new tab</button>
+            </div>
+          </div>
+          <iframe id="preview-frame" referrerpolicy="no-referrer"></iframe>
+        </div>
+      </div>
     </div>
   </div>
 
