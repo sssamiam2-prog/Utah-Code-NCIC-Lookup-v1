@@ -2,6 +2,7 @@
 const DATA_URL = "./smot_data.json"; // local JSON
 const DEFAULT_JURISDICTION = "STATE OF UTAH";
 const HIDE_FILTERS = new Set([
+  // Keep in results table but HIDE as filters:
   "FTA Flag","Suggested Fine","Warr Flag","BCI Rpt",
   "Man Appearance Flag","Mand Appear Flag","Spec Process Attr",
   "Default Severity","Compliance Credit","DL Reportable",
@@ -19,7 +20,7 @@ const create = (t, attrs={}) => {
   }
   return el;
 };
-const showLoading = (on)=>{ const el=$("#loading"); el.style.display = on? "flex":"none"; el.setAttribute("aria-hidden", on? "false":"true"); };
+const showLoading = (on)=>{ const el=$("#loading"); if (!el) return; el.style.display = on? "flex":"none"; el.setAttribute("aria-hidden", on? "false":"true"); };
 const friendly = (name)=> name === "Gov Code Literal" ? "Jurisdiction" : name;
 
 function uniqSort(values){
@@ -56,13 +57,17 @@ function buildFilters(){
 
   headers.forEach(col=>{
     if (HIDE_FILTERS.has(col)) return;
+
     const wrap = create("div");
     wrap.appendChild(create("label", { class:"label", text: friendly(col) }));
+
     const sel = create("select", { "data-col": col });
     sel.appendChild(create("option", { value:"", text:"(All)"}));
+
     uniqSort(allRows.map(r=>r[col])).forEach(v =>{
       sel.appendChild(create("option", { value:String(v), text:String(v) }));
     });
+
     wrap.appendChild(sel);
     filters.appendChild(wrap);
 
@@ -79,11 +84,11 @@ function buildFilters(){
     choices[col] = ch;
   });
 
-  // Default Jurisdiction
+  // Pre-select DEFAULT_JURISDICTION and render with it
   if (choices["Gov Code Literal"]) {
     const j = choices["Gov Code Literal"];
-    const hasDefault = allRows.some(r => (r["Gov Code Literal"]||"") === DEFAULT_JURISDICTION);
-    if (hasDefault) {
+    const exists = allRows.some(r => (r["Gov Code Literal"]||"") === DEFAULT_JURISDICTION);
+    if (exists) {
       try { j.setChoiceByValue(DEFAULT_JURISDICTION); } catch(e){}
       j.passedElement.element.value = DEFAULT_JURISDICTION;
     }
@@ -132,22 +137,30 @@ function render(){
   const start = (page-1)*pageSize;
   const slice = rows.slice(start, start+pageSize);
 
-  document.getElementById("count").textContent = `${total.toLocaleString()} rows`;
-  document.getElementById("page").textContent = `Page ${page} / ${pages}`;
-  document.getElementById("prev").disabled = page <= 1;
-  document.getElementById("next").disabled = page >= pages;
+  const countEl = $("#count"); if (countEl) countEl.textContent = `${total.toLocaleString()} rows`;
+  const pageEl = $("#page"); if (pageEl) pageEl.textContent = `Page ${page} / ${pages}`;
+  const prevEl = $("#prev"); if (prevEl) prevEl.disabled = page <= 1;
+  const nextEl = $("#next"); if (nextEl) nextEl.disabled = page >= pages;
 
-  const thead = document.getElementById("thead"); thead.innerHTML = "";
-  headers.forEach(h => thead.appendChild(create("th", { text:h })));
+  // HEAD
+  const thead = $("#thead"); thead.innerHTML = "";
+  headers.forEach((h, idx) => {
+    const th = create("th", { text:h });
+    if (idx === 0) th.style.left = "0"; // sticky handled via CSS :first-child; left for safety
+    thead.appendChild(th);
+  });
 
-  const tbody = document.getElementById("tbody"); tbody.innerHTML = "";
+  // BODY
+  const tbody = $("#tbody"); tbody.innerHTML = "";
   const frag = document.createDocumentFragment();
   slice.forEach(row=>{
-    const tr = create("tr", { class:"tap", role:"button" });
+    const tr = create("tr", { class:"tap", role:"button", tabindex:"0" });
     tr.addEventListener("click", ()=> openModalFromFiltered(row));
     tr.addEventListener("keydown", (e)=>{ if (e.key==="Enter"||e.key===" ") { e.preventDefault(); openModalFromFiltered(row); }});
-    headers.forEach(h=>{
-      tr.appendChild(create("td", { text: (row[h] ?? "").toString() }));
+    headers.forEach((h, idx)=>{
+      const td = create("td", { text: (row[h] ?? "").toString() });
+      if (idx === 0) td.style.left = "0"; // sticky handled via CSS :first-child; left for safety
+      tr.appendChild(td);
     });
     frag.appendChild(tr);
   });
@@ -155,11 +168,11 @@ function render(){
 }
 
 // ====== MODAL ======
-const backdrop = document.getElementById("backdrop");
-const modalContent = document.getElementById("modal-content");
-const modalTitle = document.getElementById("modal-title");
-document.getElementById("close").addEventListener("click", closeModal);
-backdrop.addEventListener("click", (e)=>{ if (e.target === backdrop) closeModal(); });
+const backdrop = $("#backdrop");
+const modalContent = $("#modal-content");
+const modalTitle = $("#modal-title");
+if ($("#close")) $("#close").addEventListener("click", closeModal);
+if (backdrop) backdrop.addEventListener("click", (e)=>{ if (e.target === backdrop) closeModal(); });
 document.addEventListener("keydown", (e)=>{ if (e.key==="Escape") closeModal(); });
 
 function getCurrentFiltered(){ const f = getActiveFilters(); return (Object.keys(f).length || searchQuery) ? allRows.filter(r=>rowMatches(r,f)) : allRows; }
@@ -171,7 +184,7 @@ function openModalFromFiltered(row){
   modalTitle.textContent = `Record: ${(row["Violation Code"]||"")} – ${(row["Short Description"]||"")}`;
   modalContent.innerHTML = "";
 
-  // Nav
+  // Nav in modal
   const nav = create("div", { style:"display:flex;justify-content:space-between;gap:8px;margin-bottom:10px;" });
   const navL = create("div");
   const btnPrev = create("button", { class:"btn", text:"Prev" }); btnPrev.disabled = idx<=0;
@@ -195,33 +208,57 @@ function openModalFromFiltered(row){
   backdrop.style.display = "flex";
   backdrop.setAttribute("aria-hidden","false");
 }
-function closeModal(){ backdrop.style.display = "none"; backdrop.setAttribute("aria-hidden","true"); }
+function closeModal(){ if (!backdrop) return; backdrop.style.display = "none"; backdrop.setAttribute("aria-hidden","true"); }
+
+// ====== DENSE MODE ======
+function applyDenseFromStorage() {
+  const on = localStorage.getItem("ncic_dense") === "1";
+  $("#denseToggle").checked = on;
+  document.body.classList.toggle("dense", on);
+}
 
 // ====== INIT ======
 async function init(){
   // listeners (paging, search, size, clear)
-  document.getElementById("prev").addEventListener("click", ()=>{ if (page>1){ page--; render(); }});
-  document.getElementById("next").addEventListener("click", ()=>{ page++; render(); });
-  document.getElementById("size").addEventListener("change", (e)=>{ pageSize = parseInt(e.target.value, 10) || 100; page=1; render(); });
+  const prevBtn = $("#prev"); if (prevBtn) prevBtn.addEventListener("click", ()=>{ if (page>1){ page--; render(); }});
+  const nextBtn = $("#next"); if (nextBtn) nextBtn.addEventListener("click", ()=>{ page++; render(); });
+  const sizeSel = $("#size"); if (sizeSel) sizeSel.addEventListener("change", (e)=>{ pageSize = parseInt(e.target.value, 10) || 100; page=1; render(); });
   const debounce = (fn,ms=140)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
-  document.getElementById("q").addEventListener("input", debounce(()=>{ searchQuery = document.getElementById("q").value.trim(); page=1; render(); }, 140));
-  document.getElementById("clear").addEventListener("click", ()=>{
+  const qInput = $("#q"); if (qInput) qInput.addEventListener("input", debounce(()=>{ searchQuery = $("#q").value.trim(); page=1; render(); }, 140));
+  const clearBtn = $("#clear"); if (clearBtn) clearBtn.addEventListener("click", ()=>{
     Object.values(choices).forEach(ch=>ch.clearStore());
+    // Re-apply default Jurisdiction on clear
     if (choices["Gov Code Literal"]) {
       const j = choices["Gov Code Literal"];
       try { j.setChoiceByValue(DEFAULT_JURISDICTION); } catch(e){}
       j.passedElement.element.value = DEFAULT_JURISDICTION;
     }
-    document.getElementById("q").value = ""; searchQuery = ""; page=1; render();
+    $("#q").value = ""; searchQuery = ""; page=1; render();
+  });
+
+  // Dense toggle
+  applyDenseFromStorage();
+  $("#denseToggle").addEventListener("change", (e)=>{
+    const on = e.target.checked;
+    document.body.classList.toggle("dense", on);
+    localStorage.setItem("ncic_dense", on ? "1" : "0");
   });
 
   await loadData();
   buildFilters();
+
+  // Ensure default Jurisdiction is applied (in case Choices didn't set it above)
   if (choices["Gov Code Literal"]) {
     const j = choices["Gov Code Literal"];
-    try { j.setChoiceByValue(DEFAULT_JURISDICTION); } catch(e){}
-    j.passedElement.element.value = DEFAULT_JURISDICTION;
+    const exists = allRows.some(r => (r["Gov Code Literal"]||"") === DEFAULT_JURISDICTION);
+    if (exists) {
+      try { j.setChoiceByValue(DEFAULT_JURISDICTION); } catch(e){}
+      j.passedElement.element.value = DEFAULT_JURISDICTION;
+    }
   }
+
+  // Render with the default already applied
+  page = 1;
   render();
 }
 init();
