@@ -1,4 +1,4 @@
-const CACHE = "ncic-app-v4";
+const CACHE = "ncic-app-v5";
 const ASSETS = [
   "./",
   "./index.html",
